@@ -16,6 +16,12 @@ focus_next = "j,l"
 move_prev = "shift+h,shift+k"
 move_next = "shift+j,shift+l"
 
+# Tab/group panes.
+group_prev = "control+h"
+group_next = "control+l"
+expel_prev = "control+shift+h"
+expel_next = "control+shift+l"
+
 # Keep Option+Return as the "make this workspace fullscreen-ish" command.
 toggle_layout = "return,shift+f,control+f,slash"
 swap_master = "shift+return"

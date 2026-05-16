@@ -113,6 +113,22 @@ package final class Hotkeys {
             DispatchQueue.main.async { WorkspaceManager.shared.moveFocused(offset: -1) }
             return nil
         }
+        if matches(b.groupNext, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.groupFocused(offset: 1) }
+            return nil
+        }
+        if matches(b.groupPrev, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.groupFocused(offset: -1) }
+            return nil
+        }
+        if matches(b.expelNext, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.expelFocused(offset: 1) }
+            return nil
+        }
+        if matches(b.expelPrev, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.expelFocused(offset: -1) }
+            return nil
+        }
         if matches(b.swapMaster, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.swapMaster() }
             return nil

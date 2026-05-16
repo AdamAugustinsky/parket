@@ -24,6 +24,8 @@ swift, zero dependencies.
 | `Option + Return` | swap focused window with master |
 | `Option + Tab` | switch to last active workspace |
 | `Option + M` | toggle monocle layout |
+| `Option + Control + H/L` | group focused window into prev/next pane |
+| `Option + Control + Shift + H/L` | expel active tab before/after grouped pane |
 | `Option + ,` / `Option + .` | focus prev/next monitor |
 | `Option + Shift + ,` / `Option + Shift + .` | move window to prev/next monitor |
 
@@ -48,6 +50,10 @@ focus_monitor_next = "period"
 move_monitor_prev = "shift+comma"
 move_monitor_next = "shift+period"
 last_workspace = "tab"
+group_prev = "control+h"
+group_next = "control+l"
+expel_prev = "control+shift+h"
+expel_next = "control+shift+l"
 
 [[custom]]
 key = "shift+return"

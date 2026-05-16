@@ -87,6 +87,13 @@ struct TrackedWindow: Equatable {
         }
         return value as? String
     }
+
+    func displayTitle() -> String {
+        let appName = NSRunningApplication(processIdentifier: pid)?.localizedName
+        let raw = appName ?? title() ?? "Window"
+        guard raw.count > 18 else { return raw }
+        return String(raw.prefix(17)) + "..."
+    }
 }
 
 enum WindowManager {
@@ -157,6 +164,16 @@ enum WindowManager {
     }
 
     private static func convertRect(_ rect: CGRect) -> CGRect {
+        let primaryHeight = NSScreen.screens.first?.frame.maxY ?? 1080
+        return CGRect(
+            x: rect.origin.x,
+            y: primaryHeight - rect.maxY,
+            width: rect.width,
+            height: rect.height
+        )
+    }
+
+    static func appKitRect(fromWindowRect rect: CGRect) -> CGRect {
         let primaryHeight = NSScreen.screens.first?.frame.maxY ?? 1080
         return CGRect(
             x: rect.origin.x,

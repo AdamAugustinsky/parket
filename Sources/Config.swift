@@ -132,6 +132,10 @@ package struct BuiltinBindings {
     var focusPrev = [KeyCombo(key: Key.k)]
     var moveNext: [KeyCombo] = []
     var movePrev: [KeyCombo] = []
+    var groupNext: [KeyCombo] = []
+    var groupPrev: [KeyCombo] = []
+    var expelNext: [KeyCombo] = []
+    var expelPrev: [KeyCombo] = []
     var swapMaster = [KeyCombo(key: Key.return)]
     var toggleLayout = [KeyCombo(key: Key.m)]
     var focusMonitorPrev = [KeyCombo(key: Key.comma)]
@@ -207,6 +211,10 @@ package struct Config {
             applyBinding(bindings, "focus_prev", to: &config.bindings.focusPrev)
             applyBinding(bindings, "move_next", to: &config.bindings.moveNext)
             applyBinding(bindings, "move_prev", to: &config.bindings.movePrev)
+            applyBinding(bindings, "group_next", to: &config.bindings.groupNext)
+            applyBinding(bindings, "group_prev", to: &config.bindings.groupPrev)
+            applyBinding(bindings, "expel_next", to: &config.bindings.expelNext)
+            applyBinding(bindings, "expel_prev", to: &config.bindings.expelPrev)
             applyBinding(bindings, "swap_master", to: &config.bindings.swapMaster)
             applyBinding(bindings, "toggle_layout", to: &config.bindings.toggleLayout)
             applyBinding(bindings, "focus_monitor_prev", to: &config.bindings.focusMonitorPrev)

@@ -25,6 +25,10 @@
 # move_monitor_prev = "shift+comma"
 # move_monitor_next = "shift+period"
 # last_workspace = "tab"
+# group_prev = "control+h"
+# group_next = "control+l"
+# expel_prev = "control+shift+h"
+# expel_next = "control+shift+l"
 
 # custom key bindings that run shell commands
 # [[custom]]

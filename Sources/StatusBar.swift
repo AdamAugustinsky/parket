@@ -33,6 +33,7 @@ package final class StatusBar: NSObject {
 
     func update() {
         let ws = WorkspaceManager.shared
+        TabStripController.shared.update(ws.tabStripState())
         let state = StatusState.capture(ws)
         guard state != lastState else { return }
         lastState = state
@@ -56,7 +57,7 @@ package final class StatusBar: NSObject {
 
         let layout = monitor.layouts[monitor.active]
         if layout == .monocle {
-            let windowCount = monitor.workspaces[monitor.active].count
+            let windowCount = monitor.workspaces[monitor.active].reduce(0) { $0 + $1.windows.count }
             views.append(LayoutIndicatorView(text: "M\(windowCount)", fontSize: fontSize))
         }
 
@@ -170,13 +171,14 @@ private struct StatusState: Equatable {
         }
         let monitor = ws.focusedMonitor
         let occupied = (0..<Config.shared.workspaceCount).map { !monitor.workspaces[$0].isEmpty }
+        let activeWindowCount = monitor.workspaces[monitor.active].reduce(0) { $0 + $1.windows.count }
         return StatusState(
             monitorCount: ws.monitors.count,
             focusedMonitorIndex: ws.focusedMonitorIndex,
             activeWorkspace: monitor.active,
             activeLayout: monitor.layouts[monitor.active],
             occupiedWorkspaces: occupied,
-            activeWindowCount: monitor.workspaces[monitor.active].count
+            activeWindowCount: activeWindowCount
         )
     }
 }
