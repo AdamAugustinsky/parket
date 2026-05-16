@@ -74,6 +74,10 @@ package final class WorkspaceManager {
         focusedMonitor.focusPrev()
     }
 
+    func moveFocused(offset: Int) {
+        focusedMonitor.moveFocused(offset: offset)
+    }
+
     func swapMaster() {
         focusedMonitor.swapMaster()
     }
@@ -81,6 +85,20 @@ package final class WorkspaceManager {
     func toggleLayout() {
         focusedMonitor.toggleLayout()
         StatusBar.shared.update()
+    }
+
+    func adjustMasterRatio(by delta: CGFloat) {
+        Config.shared.masterRatio = min(max(Config.shared.masterRatio + delta, 0.20), 0.80)
+        for monitor in monitors {
+            monitor.retile()
+        }
+    }
+
+    func resetMasterRatio() {
+        Config.shared.masterRatio = 0.50
+        for monitor in monitors {
+            monitor.retile()
+        }
     }
 
     func focusMonitor(offset: Int) {

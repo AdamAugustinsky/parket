@@ -43,17 +43,13 @@ package final class Hotkeys {
         let config = Config.shared
         let hasModifier = flags.contains(config.modifier)
         let hasShift = flags.contains(.maskShift)
-        let hasExtraModifiers =
-            (config.modifier != .maskCommand && flags.contains(.maskCommand)) ||
-            (config.modifier != .maskControl && flags.contains(.maskControl)) ||
-            (config.modifier != .maskAlternate && flags.contains(.maskAlternate))
 
-        guard hasModifier, !hasExtraModifiers else {
+        guard hasModifier else {
             return Unmanaged.passRetained(event)
         }
 
         for binding in config.customBindings {
-            guard binding.key == keyCode, binding.shift == hasShift else { continue }
+            guard binding.combo.matches(keyCode: keyCode, flags: flags, globalModifier: config.modifier) else { continue }
             let cmd = binding.command
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
@@ -65,6 +61,9 @@ package final class Hotkeys {
         }
 
         if let number = config.numberKeys[keyCode] {
+            guard isWorkspaceCombo(flags: flags, shift: hasShift, globalModifier: config.modifier) else {
+                return Unmanaged.passRetained(event)
+            }
             let index = number - 1
             DispatchQueue.main.async {
                 if hasShift {
@@ -78,43 +77,81 @@ package final class Hotkeys {
 
         let b = config.bindings
 
-        if keyCode == b.focusMonitorPrev.key && hasShift == b.focusMonitorPrev.shift {
+        if matches(b.focusMonitorPrev, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.focusMonitor(offset: -1) }
             return nil
         }
-        if keyCode == b.focusMonitorNext.key && hasShift == b.focusMonitorNext.shift {
+        if matches(b.focusMonitorNext, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.focusMonitor(offset: 1) }
             return nil
         }
-        if keyCode == b.moveMonitorPrev.key && hasShift == b.moveMonitorPrev.shift {
+        if matches(b.moveMonitorPrev, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.moveWindowToMonitor(offset: -1) }
             return nil
         }
-        if keyCode == b.moveMonitorNext.key && hasShift == b.moveMonitorNext.shift {
+        if matches(b.moveMonitorNext, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.moveWindowToMonitor(offset: 1) }
             return nil
         }
-        if keyCode == b.lastWorkspace.key && hasShift == b.lastWorkspace.shift {
+        if matches(b.lastWorkspace, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.switchToLast() }
             return nil
         }
-        if keyCode == b.focusNext.key && hasShift == b.focusNext.shift {
+        if matches(b.focusNext, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.focusNext() }
             return nil
         }
-        if keyCode == b.focusPrev.key && hasShift == b.focusPrev.shift {
+        if matches(b.focusPrev, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.focusPrev() }
             return nil
         }
-        if keyCode == b.swapMaster.key && hasShift == b.swapMaster.shift {
+        if matches(b.moveNext, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.moveFocused(offset: 1) }
+            return nil
+        }
+        if matches(b.movePrev, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.moveFocused(offset: -1) }
+            return nil
+        }
+        if matches(b.swapMaster, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.swapMaster() }
             return nil
         }
-        if keyCode == b.toggleLayout.key && hasShift == b.toggleLayout.shift {
+        if matches(b.toggleLayout, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.toggleLayout() }
+            return nil
+        }
+        if matches(b.decreaseMasterRatio, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.adjustMasterRatio(by: -0.05) }
+            return nil
+        }
+        if matches(b.increaseMasterRatio, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.adjustMasterRatio(by: 0.05) }
+            return nil
+        }
+        if matches(b.resetMasterRatio, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.resetMasterRatio() }
             return nil
         }
 
         return Unmanaged.passRetained(event)
+    }
+
+    private static func matches(
+        _ combos: [KeyCombo],
+        keyCode: UInt16,
+        flags: CGEventFlags,
+        globalModifier: CGEventFlags
+    ) -> Bool {
+        combos.contains { $0.matches(keyCode: keyCode, flags: flags, globalModifier: globalModifier) }
+    }
+
+    private static func isWorkspaceCombo(
+        flags: CGEventFlags,
+        shift: Bool,
+        globalModifier: CGEventFlags
+    ) -> Bool {
+        let combo = KeyCombo(key: 0, shift: shift)
+        return combo.matches(keyCode: 0, flags: flags, globalModifier: globalModifier)
     }
 }

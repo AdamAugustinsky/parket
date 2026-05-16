@@ -1,14 +1,47 @@
 import Cocoa
 
 package struct Binding {
-    let key: UInt16
-    let shift: Bool
+    let combo: KeyCombo
     let command: String
 
     init(key: UInt16, shift: Bool = false, command: String) {
+        self.combo = KeyCombo(key: key, shift: shift)
+        self.command = command
+    }
+
+    init(combo: KeyCombo, command: String) {
+        self.combo = combo
+        self.command = command
+    }
+}
+
+package struct KeyCombo {
+    let key: UInt16
+    let shift: Bool
+    let control: Bool
+    let command: Bool
+    let option: Bool
+
+    init(key: UInt16, shift: Bool = false, control: Bool = false, command: Bool = false, option: Bool = false) {
         self.key = key
         self.shift = shift
+        self.control = control
         self.command = command
+        self.option = option
+    }
+
+    func matches(keyCode: UInt16, flags: CGEventFlags, globalModifier: CGEventFlags) -> Bool {
+        guard key == keyCode else { return false }
+        guard flags.contains(globalModifier) else { return false }
+
+        let requiresControl = control || globalModifier == .maskControl
+        let requiresCommand = command || globalModifier == .maskCommand
+        let requiresOption = option || globalModifier == .maskAlternate
+
+        return flags.contains(.maskShift) == shift
+            && flags.contains(.maskControl) == requiresControl
+            && flags.contains(.maskCommand) == requiresCommand
+            && flags.contains(.maskAlternate) == requiresOption
     }
 }
 
@@ -95,15 +128,20 @@ package enum Key {
 }
 
 package struct BuiltinBindings {
-    var focusNext: (key: UInt16, shift: Bool) = (Key.j, false)
-    var focusPrev: (key: UInt16, shift: Bool) = (Key.k, false)
-    var swapMaster: (key: UInt16, shift: Bool) = (Key.return, false)
-    var toggleLayout: (key: UInt16, shift: Bool) = (Key.m, false)
-    var focusMonitorPrev: (key: UInt16, shift: Bool) = (Key.comma, false)
-    var focusMonitorNext: (key: UInt16, shift: Bool) = (Key.period, false)
-    var moveMonitorPrev: (key: UInt16, shift: Bool) = (Key.comma, true)
-    var moveMonitorNext: (key: UInt16, shift: Bool) = (Key.period, true)
-    var lastWorkspace: (key: UInt16, shift: Bool) = (Key.tab, false)
+    var focusNext = [KeyCombo(key: Key.j)]
+    var focusPrev = [KeyCombo(key: Key.k)]
+    var moveNext: [KeyCombo] = []
+    var movePrev: [KeyCombo] = []
+    var swapMaster = [KeyCombo(key: Key.return)]
+    var toggleLayout = [KeyCombo(key: Key.m)]
+    var focusMonitorPrev = [KeyCombo(key: Key.comma)]
+    var focusMonitorNext = [KeyCombo(key: Key.period)]
+    var moveMonitorPrev = [KeyCombo(key: Key.comma, shift: true)]
+    var moveMonitorNext = [KeyCombo(key: Key.period, shift: true)]
+    var lastWorkspace = [KeyCombo(key: Key.tab)]
+    var decreaseMasterRatio: [KeyCombo] = []
+    var increaseMasterRatio: [KeyCombo] = []
+    var resetMasterRatio: [KeyCombo] = []
 }
 
 package struct Config {
@@ -167,6 +205,8 @@ package struct Config {
         if let bindings = toml["bindings"] as? [String: Any] {
             applyBinding(bindings, "focus_next", to: &config.bindings.focusNext)
             applyBinding(bindings, "focus_prev", to: &config.bindings.focusPrev)
+            applyBinding(bindings, "move_next", to: &config.bindings.moveNext)
+            applyBinding(bindings, "move_prev", to: &config.bindings.movePrev)
             applyBinding(bindings, "swap_master", to: &config.bindings.swapMaster)
             applyBinding(bindings, "toggle_layout", to: &config.bindings.toggleLayout)
             applyBinding(bindings, "focus_monitor_prev", to: &config.bindings.focusMonitorPrev)
@@ -174,6 +214,9 @@ package struct Config {
             applyBinding(bindings, "move_monitor_prev", to: &config.bindings.moveMonitorPrev)
             applyBinding(bindings, "move_monitor_next", to: &config.bindings.moveMonitorNext)
             applyBinding(bindings, "last_workspace", to: &config.bindings.lastWorkspace)
+            applyBinding(bindings, "decrease_master_ratio", to: &config.bindings.decreaseMasterRatio)
+            applyBinding(bindings, "increase_master_ratio", to: &config.bindings.increaseMasterRatio)
+            applyBinding(bindings, "reset_master_ratio", to: &config.bindings.resetMasterRatio)
         }
 
         if let customs = toml["custom"] as? [[String: Any]] {
@@ -181,36 +224,55 @@ package struct Config {
                 guard let keyStr = entry["key"] as? String,
                       let command = entry["command"] as? String
                 else { return nil }
-                let (keyCode, shift) = parseKeyString(keyStr)
-                guard let code = keyCode else {
+                guard let combo = parseKeyCombo(keyStr) else {
                     fputs("parket: unknown key '\(keyStr)' in custom binding\n", stderr)
                     return nil
                 }
-                return Binding(key: code, shift: shift, command: command)
+                return Binding(combo: combo, command: command)
             }
         }
 
         shared = config
     }
 
-    private static func parseKeyString(_ s: String) -> (key: UInt16?, shift: Bool) {
-        if s.hasPrefix("shift+") {
-            let name = String(s.dropFirst(6))
-            return (Key.byName[name], true)
+    private static func parseKeyCombo(_ s: String) -> KeyCombo? {
+        var shift = false
+        var control = false
+        var command = false
+        var option = false
+        var keyName: String?
+
+        for token in s.split(separator: "+") {
+            switch token.trimmingCharacters(in: .whitespaces).lowercased() {
+            case "shift":
+                shift = true
+            case "control", "ctrl":
+                control = true
+            case "command", "cmd":
+                command = true
+            case "option", "alt":
+                option = true
+            case let name:
+                keyName = name
+            }
         }
-        return (Key.byName[s], false)
+
+        guard let keyName, let key = Key.byName[keyName] else { return nil }
+        return KeyCombo(key: key, shift: shift, control: control, command: command, option: option)
     }
 
     private static func applyBinding(
         _ dict: [String: Any], _ name: String,
-        to binding: inout (key: UInt16, shift: Bool)
+        to binding: inout [KeyCombo]
     ) {
         guard let value = dict[name] as? String else { return }
-        let (keyCode, shift) = parseKeyString(value)
-        guard let code = keyCode else {
-            fputs("parket: unknown key '\(value)' for binding '\(name)'\n", stderr)
-            return
+        let combos = value.split(separator: ",").compactMap {
+            parseKeyCombo($0.trimmingCharacters(in: .whitespaces))
         }
-        binding = (code, shift)
+        if combos.isEmpty {
+            fputs("parket: unknown key '\(value)' for binding '\(name)'\n", stderr)
+        } else {
+            binding = combos
+        }
     }
 }

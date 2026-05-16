@@ -102,6 +102,21 @@ package final class Monitor {
         }
     }
 
+    func moveFocused(offset: Int) {
+        let windows = workspaces[active]
+        guard windows.count > 1,
+              let focused = WindowManager.focusedWindow(),
+              let i = windows.firstIndex(of: focused)
+        else { return }
+
+        let targetIndex = (i + offset + windows.count) % windows.count
+        workspaces[active].remove(at: i)
+        workspaces[active].insert(focused, at: targetIndex)
+        focusedIndices[active] = targetIndex
+        retile()
+        focused.focus()
+    }
+
     func swapMaster() {
         guard workspaces[active].count > 1 else { return }
         guard let focused = WindowManager.focusedWindow(),
