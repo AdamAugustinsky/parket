@@ -113,7 +113,10 @@ enum WindowManager {
 
     static func focusedWindow() -> TrackedWindow? {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
-        let pid = frontApp.processIdentifier
+        return focusedWindow(pid: frontApp.processIdentifier)
+    }
+
+    static func focusedWindow(pid: pid_t) -> TrackedWindow? {
         let appRef = AXUIElementCreateApplication(pid)
 
         var value: AnyObject?

@@ -36,6 +36,49 @@ package final class WorkspaceManager {
         switchTo(target)
     }
 
+    @discardableResult
+    func revealFocusedWindow(pid: pid_t) -> Bool {
+        guard let window = WindowManager.focusedWindow(pid: pid) else { return false }
+        return revealWindow(window)
+    }
+
+    @discardableResult
+    func revealWindow(_ window: TrackedWindow) -> Bool {
+        guard !monitors.isEmpty else { return false }
+
+        for (monitorIndex, monitor) in monitors.enumerated() {
+            for workspaceIndex in 0..<monitor.workspaces.count {
+                guard let windowIndex = monitor.workspaces[workspaceIndex].firstIndex(of: window) else {
+                    continue
+                }
+
+                let monitorChanged = focusedMonitorIndex != monitorIndex
+                let workspaceChanged = monitor.active != workspaceIndex
+                guard monitorChanged || workspaceChanged else {
+                    monitor.focusedIndices[workspaceIndex] = windowIndex
+                    return true
+                }
+
+                focusedMonitor.saveFocusedIndex()
+                focusedMonitorIndex = monitorIndex
+                monitor.focusedIndices[workspaceIndex] = windowIndex
+
+                if workspaceChanged {
+                    monitor.switchTo(workspaceIndex)
+                } else {
+                    window.focus()
+                    if monitor.layouts[workspaceIndex] == .monocle {
+                        window.raise()
+                    }
+                }
+
+                StatusBar.shared.update()
+                return true
+            }
+        }
+        return false
+    }
+
     func moveActiveWindowTo(_ index: Int) {
         focusedMonitor.moveActiveWindowTo(index)
         StatusBar.shared.update()

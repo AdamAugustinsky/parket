@@ -34,6 +34,16 @@ package final class WindowObserver {
             WindowObserver.shared.observers.removeValue(forKey: pid)
         }
 
+        nc.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil, queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.activationPolicy == .regular
+            else { return }
+            self?.handleAppActivated(app)
+        }
+
         for app in NSWorkspace.shared.runningApplications {
             guard app.activationPolicy == .regular else { continue }
             observeApp(pid: app.processIdentifier)
@@ -44,6 +54,20 @@ package final class WindowObserver {
         let pid = app.processIdentifier
         observeApp(pid: pid)
         tryAdoptWindows(pid: pid, attempt: 0)
+    }
+
+    private func handleAppActivated(_ app: NSRunningApplication) {
+        let pid = app.processIdentifier
+        observeApp(pid: pid)
+        tryRevealFocusedWindow(pid: pid, attempt: 0)
+    }
+
+    private func tryRevealFocusedWindow(pid: pid_t, attempt: Int) {
+        if WorkspaceManager.shared.revealFocusedWindow(pid: pid) { return }
+        guard attempt < Self.maxRetries else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.retryInterval) {
+            self.tryRevealFocusedWindow(pid: pid, attempt: attempt + 1)
+        }
     }
 
     private func tryAdoptWindows(pid: pid_t, attempt: Int) {
@@ -86,6 +110,7 @@ package final class WindowObserver {
 
         let appRef = AXUIElementCreateApplication(pid)
         AXObserverAddNotification(obs, appRef, kAXWindowCreatedNotification as CFString, nil)
+        AXObserverAddNotification(obs, appRef, kAXFocusedWindowChangedNotification as CFString, nil)
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
 
         observers[pid] = obs
@@ -98,6 +123,10 @@ package final class WindowObserver {
             var pidValue: pid_t = 0
             AXUIElementGetPid(element, &pidValue)
             WindowObserver.shared.tryAdoptWindow(element: element, pid: pidValue, attempt: 0)
+        } else if notif == kAXFocusedWindowChangedNotification {
+            var pidValue: pid_t = 0
+            AXUIElementGetPid(element, &pidValue)
+            WindowObserver.shared.tryRevealFocusedWindow(pid: pidValue, attempt: 0)
         } else if notif == kAXUIElementDestroyedNotification {
             var pidValue: pid_t = 0
             AXUIElementGetPid(element, &pidValue)
