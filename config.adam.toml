@@ -1,0 +1,46 @@
+# Parket local config.
+# This uses the patched Parket build in ~/Documents/Parket so comma-separated
+# aliases and control+... modifiers work for built-in bindings.
+
+workspace_count = 9
+master_ratio = 0.50
+modifier = "option"
+
+[bindings]
+# OmniWM/AeroSpace muscle memory. Parket is linear master-stack, so:
+# h/k = previous window, j/l = next window.
+focus_prev = "h,k,control+tab"
+focus_next = "j,l"
+
+# Reorder the focused window within Parket's master-stack order.
+move_prev = "shift+h,shift+k"
+move_next = "shift+j,shift+l"
+
+# Keep Option+Return as the "make this workspace fullscreen-ish" command.
+toggle_layout = "return,shift+f,control+f,slash"
+swap_master = "shift+return"
+
+last_workspace = "tab"
+
+# Monitor controls. These preserve Parket's defaults.
+focus_monitor_prev = "comma"
+focus_monitor_next = "period"
+move_monitor_prev = "shift+comma"
+move_monitor_next = "shift+period"
+
+# Patched Parket master-width controls.
+decrease_master_ratio = "minus"
+increase_master_ratio = "equal"
+reset_master_ratio = "shift+b"
+
+[[custom]]
+key = "grave"
+command = "open -na Ghostty"
+
+[[custom]]
+key = "shift+o"
+command = "osascript -e 'tell application \"System Events\" to key code 126 using control down'"
+
+[[custom]]
+key = "control+space"
+command = "open -a Raycast"
