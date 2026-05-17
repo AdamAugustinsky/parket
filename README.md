@@ -29,7 +29,7 @@ swift, zero dependencies.
 - Linear vertical stack focus with `Option+J/K`.
 - Configurable inner window gaps with `window_gap`.
 - Comma-separated keybinding aliases and explicit `control+`, `option+`, `command+`, and `shift+` modifier parsing.
-- Adam-focused default config with nine named lanes, Ghostty launcher, Raycast binding, and Mission Control binding.
+- Adam-focused default config with nine workspaces, Ghostty launcher, Raycast binding, and Mission Control binding.
 - Re-adoption of focused tileable windows after app activation/fullscreen transitions when macOS does not emit a new-window event.
 - Expanded pane and tiler tests covering tab grouping, expel, non-wrapping moves, spatial focus, tab identity, and window gaps.
 
