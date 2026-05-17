@@ -7,6 +7,9 @@
 # master window width ratio (0.0-1.0)
 # master_ratio = 0.55
 
+# inner gap between tiled windows, in points
+# window_gap = 6
+
 # global modifier key: "option", "control", "command"
 # modifier = "option"
 

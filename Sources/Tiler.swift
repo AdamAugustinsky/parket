@@ -29,23 +29,33 @@ package enum Tiler {
         var result: [CGRect] = []
         result.reserveCapacity(count)
         let masterWidth = floor(screen.width * Config.shared.masterRatio)
+        let gap = max(Config.shared.windowGap, 0)
+        let horizontalGap = min(gap, max(screen.width - 1, 0))
+        let masterInset = floor(horizontalGap / 2)
+        let stackInset = horizontalGap - masterInset
+
         result.append(CGRect(
             x: screen.origin.x, y: screen.origin.y,
-            width: masterWidth, height: screen.height
+            width: max(masterWidth - masterInset, 0), height: screen.height
         ))
 
         let stackCount = count - 1
-        let stackWidth = screen.width - masterWidth
-        let stackHeight = floor(screen.height / CGFloat(stackCount))
+        let stackX = screen.origin.x + masterWidth + stackInset
+        let stackWidth = max(screen.maxX - stackX, 0)
+        let verticalGap = stackCount > 1
+            ? min(gap, max(screen.height / CGFloat(stackCount - 1), 0))
+            : 0
+        let availableStackHeight = max(screen.height - verticalGap * CGFloat(stackCount - 1), 0)
+        let stackHeight = floor(availableStackHeight / CGFloat(stackCount))
 
         for i in 1..<count {
-            let y = screen.origin.y + CGFloat(i - 1) * stackHeight
+            let y = screen.origin.y + CGFloat(i - 1) * (stackHeight + verticalGap)
             let h = (i == count - 1)
-                ? screen.height - CGFloat(i - 1) * stackHeight
+                ? screen.maxY - y
                 : stackHeight
             result.append(CGRect(
-                x: screen.origin.x + masterWidth, y: y,
-                width: stackWidth, height: h
+                x: stackX, y: y,
+                width: stackWidth, height: max(h, 0)
             ))
         }
         return result

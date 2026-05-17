@@ -97,6 +97,14 @@ package final class Hotkeys {
             DispatchQueue.main.async { WorkspaceManager.shared.switchToLast() }
             return nil
         }
+        if matches(b.focusLeft, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.focusLeft() }
+            return nil
+        }
+        if matches(b.focusRight, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
+            DispatchQueue.main.async { WorkspaceManager.shared.focusRight() }
+            return nil
+        }
         if matches(b.focusNext, keyCode: keyCode, flags: flags, globalModifier: config.modifier) {
             DispatchQueue.main.async { WorkspaceManager.shared.focusNext() }
             return nil

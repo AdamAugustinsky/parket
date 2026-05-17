@@ -1,9 +1,15 @@
 import AppKit
 
-package struct TabStripState {
+package struct TabState: Equatable {
+    let window: TrackedWindow
+    let title: String
+}
+
+package struct TabStripState: Equatable {
+    let paneID: PaneID
     let frame: CGRect
-    let titles: [String]
-    let activeIndex: Int
+    let tabs: [TabState]
+    let activeWindow: TrackedWindow
 }
 
 package final class TabStripController: NSObject {
@@ -11,27 +17,24 @@ package final class TabStripController: NSObject {
 
     private var panel: NSPanel?
     private var container: NSView?
-    private var stack: NSStackView?
-    private var lastTitles: [String] = []
-    private var lastActiveIndex: Int = -1
+    private var segmentedControl: NSSegmentedControl?
+    private var lastState: TabStripState?
 
     private override init() {}
 
     package func update(_ state: TabStripState?) {
         DispatchQueue.main.async {
-            guard let state, state.titles.count > 1 else {
+            guard let state, state.tabs.count > 1 else {
                 self.panel?.orderOut(nil)
-                self.lastTitles = []
-                self.lastActiveIndex = -1
+                self.lastState = nil
                 return
             }
 
             let panel = self.ensurePanel()
             self.position(panel: panel, for: state)
-            if self.lastTitles != state.titles || self.lastActiveIndex != state.activeIndex {
-                self.rebuildTabs(titles: state.titles, activeIndex: state.activeIndex)
-                self.lastTitles = state.titles
-                self.lastActiveIndex = state.activeIndex
+            if self.lastState != state {
+                self.rebuildTabs(state)
+                self.lastState = state
             }
             panel.orderFrontRegardless()
         }
@@ -41,7 +44,7 @@ package final class TabStripController: NSObject {
         if let panel { return panel }
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 240, height: 28),
+            contentRect: NSRect(x: 0, y: 0, width: 260, height: 34),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -49,73 +52,103 @@ package final class TabStripController: NSObject {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        panel.level = .floating
+        panel.level = .popUpMenu
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
-        let container = NSView(frame: panel.contentView?.bounds ?? .zero)
-        container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.92).cgColor
-        container.layer?.cornerRadius = 7
-        container.layer?.borderWidth = 0.5
-        container.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.75).cgColor
-        container.translatesAutoresizingMaskIntoConstraints = false
-
-        let stack = NSStackView()
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.distribution = .fillEqually
-        stack.spacing = 4
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        container.addSubview(stack)
+        let container = makeNativeContainer()
         panel.contentView = container
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 4),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -4),
-            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -4),
-        ])
 
         self.panel = panel
         self.container = container
-        self.stack = stack
         return panel
+    }
+
+    private func makeNativeContainer() -> NSView {
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.translatesAutoresizingMaskIntoConstraints = false
+            glass.cornerRadius = 13
+            glass.style = .regular
+            glass.tintColor = NSColor.controlBackgroundColor.withAlphaComponent(0.12)
+
+            let content = NSView()
+            content.translatesAutoresizingMaskIntoConstraints = false
+            glass.contentView = content
+            NSLayoutConstraint.activate([
+                content.leadingAnchor.constraint(equalTo: glass.leadingAnchor),
+                content.trailingAnchor.constraint(equalTo: glass.trailingAnchor),
+                content.topAnchor.constraint(equalTo: glass.topAnchor),
+                content.bottomAnchor.constraint(equalTo: glass.bottomAnchor),
+            ])
+            return glass
+        }
+
+        let visual = NSVisualEffectView()
+        visual.translatesAutoresizingMaskIntoConstraints = false
+        visual.material = .hudWindow
+        visual.blendingMode = .behindWindow
+        visual.state = .active
+        visual.wantsLayer = true
+        visual.layer?.cornerRadius = 13
+        visual.layer?.cornerCurve = .continuous
+        visual.layer?.masksToBounds = true
+        visual.layer?.borderWidth = 0.5
+        visual.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
+        return visual
     }
 
     private func position(panel: NSPanel, for state: TabStripState) {
         let pane = WindowManager.appKitRect(fromWindowRect: state.frame)
-        let height: CGFloat = 30
-        let width = max(120, min(pane.width - 16, CGFloat(state.titles.count) * 92 + 10))
+        let height: CGFloat = 34
+        let width = max(132, min(pane.width - 24, CGFloat(state.tabs.count) * 104 + 18))
         let x = pane.minX + (pane.width - width) / 2
-        let y = pane.maxY - height - 8
+        let y = pane.maxY - height - 10
         panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
     }
 
-    private func rebuildTabs(titles: [String], activeIndex: Int) {
-        guard let stack else { return }
-        stack.arrangedSubviews.forEach {
-            stack.removeArrangedSubview($0)
-            $0.removeFromSuperview()
+    private func rebuildTabs(_ state: TabStripState) {
+        guard let container else { return }
+
+        segmentedControl?.removeFromSuperview()
+
+        let control = NSSegmentedControl(
+            labels: state.tabs.map(\.title),
+            trackingMode: .selectOne,
+            target: self,
+            action: #selector(selectTab(_:))
+        )
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.segmentStyle = .capsule
+        control.segmentDistribution = .fillEqually
+        control.controlSize = .small
+        control.font = .systemFont(ofSize: 12, weight: .medium)
+
+        if #available(macOS 26.0, *) {
+            control.borderShape = .capsule
         }
 
-        for (index, title) in titles.enumerated() {
-            let button = NSButton(title: title, target: self, action: #selector(selectTab(_:)))
-            button.tag = index
-            button.isBordered = false
-            button.font = .systemFont(ofSize: 11, weight: index == activeIndex ? .semibold : .regular)
-            button.contentTintColor = index == activeIndex ? .labelColor : .secondaryLabelColor
-            button.wantsLayer = true
-            button.layer?.cornerRadius = 5
-            button.layer?.backgroundColor = index == activeIndex
-                ? NSColor.controlAccentColor.withAlphaComponent(0.20).cgColor
-                : NSColor.clear.cgColor
-            button.cell?.lineBreakMode = .byTruncatingTail
-            stack.addArrangedSubview(button)
+        control.selectedSegment = state.tabs.firstIndex { $0.window == state.activeWindow } ?? 0
+        for index in state.tabs.indices {
+            control.setTag(index, forSegment: index)
+            control.setToolTip(state.tabs[index].title, forSegment: index)
         }
+
+        container.addSubview(control)
+        NSLayoutConstraint.activate([
+            control.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
+            control.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
+            control.topAnchor.constraint(equalTo: container.topAnchor, constant: 5),
+            control.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -5),
+        ])
+        segmentedControl = control
     }
 
-    @objc private func selectTab(_ sender: NSButton) {
-        WorkspaceManager.shared.activateTab(index: sender.tag)
+    @objc private func selectTab(_ sender: NSSegmentedControl) {
+        let index = sender.selectedSegment
+        guard let state = lastState,
+              state.tabs.indices.contains(index)
+        else { return }
+        WorkspaceManager.shared.activateTab(paneID: state.paneID, window: state.tabs[index].window)
     }
 }

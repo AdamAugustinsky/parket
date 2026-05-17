@@ -4,13 +4,16 @@
 
 workspace_count = 9
 master_ratio = 0.50
+window_gap = 6
 modifier = "option"
 
 [bindings]
-# OmniWM/AeroSpace muscle memory. Parket is linear master-stack, so:
-# h/k = previous window, j/l = next window.
-focus_prev = "h,k,control+tab"
-focus_next = "j,l"
+# Spatial master-stack navigation.
+# h/l cross the master split; j/k move through the stack linearly.
+focus_left = "h"
+focus_right = "l"
+focus_prev = "k,control+tab"
+focus_next = "j"
 
 # Reorder the focused window within Parket's master-stack order.
 move_prev = "shift+h,shift+k"

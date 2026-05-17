@@ -7,7 +7,8 @@ package final class Monitor {
     var screen: NSScreen
     var workspaces: [[WindowPane]] = Array(repeating: [], count: Config.shared.workspaceCount)
     var layouts: [Layout] = Array(repeating: .tile, count: Config.shared.workspaceCount)
-    var focusedPaneIndices: [Int] = Array(repeating: 0, count: Config.shared.workspaceCount)
+    var focusedPaneIDs: [PaneID?] = Array(repeating: nil, count: Config.shared.workspaceCount)
+    var lastStackPaneIDs: [PaneID?] = Array(repeating: nil, count: Config.shared.workspaceCount)
     var active: Int = 0
     var previousActive: Int = 0
     private var retileScheduled = false
@@ -22,7 +23,7 @@ package final class Monitor {
 
         let previous = active
         previousActive = previous
-        saveFocusedIndex()
+        normalizeWorkspace(previous)
         active = index
 
         hideWorkspace(previous)
@@ -35,7 +36,8 @@ package final class Monitor {
         guard let pane = removeFocusedPane() else { return }
 
         workspaces[index].insert(pane, at: 0)
-        clampFocusedPaneIndex(index)
+        focusedPaneIDs[index] = pane.id
+        normalizeWorkspace(index)
         retile()
         hidePane(pane)
         restoreFocusedWindow()
@@ -45,8 +47,9 @@ package final class Monitor {
         for workspace in workspaces where workspace.contains(where: { $0.contains(window) }) {
             return
         }
-        workspaces[active].insert(Pane(windows: [window]), at: 0)
-        focusedPaneIndices[active] = 0
+        let pane = Pane(windows: [window])
+        workspaces[active].insert(pane, at: 0)
+        focusedPaneIDs[active] = pane.id
     }
 
     func addWindow(_ window: TrackedWindow) {
@@ -56,9 +59,9 @@ package final class Monitor {
 
     @discardableResult
     func removeFocusedPane() -> WindowPane? {
-        guard let location = activeLocation() else { return nil }
+        guard let location = savedLocation() else { return nil }
         let pane = workspaces[active].remove(at: location.paneIndex)
-        clampFocusedPaneIndex(active)
+        normalizeWorkspace(active, preferredPaneIndex: location.paneIndex)
         return pane
     }
 
@@ -80,7 +83,7 @@ package final class Monitor {
             if workspaceChanged {
                 changed = true
                 needsRetile = needsRetile || workspaceIndex == active
-                clampFocusedPaneIndex(workspaceIndex)
+                normalizeWorkspace(workspaceIndex)
             }
         }
 
@@ -96,9 +99,11 @@ package final class Monitor {
 
     func focusNext() { focusOffset(1) }
     func focusPrev() { focusOffset(-1) }
+    func focusLeft() { focusHorizontal(left: true) }
+    func focusRight() { focusHorizontal(left: false) }
 
     private func focusOffset(_ offset: Int) {
-        guard var location = activeLocation() else { return }
+        guard var location = savedLocation() else { return }
         guard let target = PaneOperations.focusOffset(
             in: &workspaces[active],
             from: location,
@@ -106,55 +111,86 @@ package final class Monitor {
         ) else { return }
 
         location = target
-        focusedPaneIndices[active] = location.paneIndex
+        focusedPaneIDs[active] = workspaces[active][location.paneIndex].id
+        if location.paneIndex != 0 {
+            lastStackPaneIDs[active] = workspaces[active][location.paneIndex].id
+        }
         retile()
         focusActiveWindow(at: location)
     }
 
+    private func focusHorizontal(left: Bool) {
+        guard layouts[active] == .tile else {
+            focusOffset(left ? -1 : 1)
+            return
+        }
+        guard let location = savedLocation() else { return }
+
+        let target = left
+            ? PaneOperations.focusLeft(in: workspaces[active], from: location)
+            : PaneOperations.focusRight(
+                in: workspaces[active],
+                from: location,
+                rememberedStackPaneID: lastStackPaneIDs[active]
+            )
+
+        guard let target else { return }
+
+        if location.paneIndex != 0 {
+            lastStackPaneIDs[active] = workspaces[active][location.paneIndex].id
+        }
+        if target.paneIndex != 0 {
+            lastStackPaneIDs[active] = workspaces[active][target.paneIndex].id
+        }
+        focusedPaneIDs[active] = workspaces[active][target.paneIndex].id
+        retile()
+        focusActiveWindow(at: target)
+    }
+
     func moveFocused(offset: Int) {
-        guard let location = activeLocation() else { return }
+        guard let location = savedLocation() else { return }
         guard let target = PaneOperations.moveFocused(
             in: &workspaces[active],
             from: location,
             offset: offset
         ) else { return }
 
-        focusedPaneIndices[active] = target.paneIndex
+        focusedPaneIDs[active] = workspaces[active][target.paneIndex].id
         retile()
         focusActiveWindow(at: target)
     }
 
     func groupFocused(offset: Int) {
-        guard let location = activeLocation() else { return }
+        guard let location = savedLocation() else { return }
         guard let target = PaneOperations.groupFocused(
             in: &workspaces[active],
             from: location,
             offset: offset
         ) else { return }
 
-        focusedPaneIndices[active] = target.paneIndex
+        focusedPaneIDs[active] = workspaces[active][target.paneIndex].id
         retile()
         focusActiveWindow(at: target)
     }
 
     func expelFocused(offset: Int) {
-        guard let location = activeLocation() else { return }
+        guard let location = savedLocation() else { return }
         guard let target = PaneOperations.expelFocused(
             from: &workspaces[active],
             location: location,
             offset: offset
         ) else { return }
 
-        focusedPaneIndices[active] = target.paneIndex
+        focusedPaneIDs[active] = workspaces[active][target.paneIndex].id
         retile()
         focusActiveWindow(at: target)
     }
 
     func swapMaster() {
-        guard let location = activeLocation(), location.paneIndex != 0 else { return }
+        guard let location = savedLocation(), location.paneIndex != 0 else { return }
         workspaces[active].swapAt(0, location.paneIndex)
         let target = PaneLocation(paneIndex: 0, windowIndex: location.windowIndex)
-        focusedPaneIndices[active] = 0
+        focusedPaneIDs[active] = workspaces[active][0].id
         retile()
         focusActiveWindow(at: target)
     }
@@ -167,12 +203,14 @@ package final class Monitor {
         }
     }
 
-    func activateTab(index: Int) {
-        guard !workspaces[active].isEmpty else { return }
-        let paneIndex = min(focusedPaneIndices[active], workspaces[active].count - 1)
-        guard workspaces[active][paneIndex].windows.indices.contains(index) else { return }
-        workspaces[active][paneIndex].activeIndex = index
-        let location = PaneLocation(paneIndex: paneIndex, windowIndex: index)
+    func activateTab(paneID: PaneID, window: TrackedWindow) {
+        guard let paneIndex = PaneOperations.location(of: paneID, in: workspaces[active]),
+              let windowIndex = workspaces[active][paneIndex].firstIndex(of: window)
+        else { return }
+
+        focusedPaneIDs[active] = paneID
+        workspaces[active][paneIndex].activeWindow = window
+        let location = PaneLocation(paneIndex: paneIndex, windowIndex: windowIndex)
         retile()
         focusActiveWindow(at: location)
     }
@@ -215,12 +253,14 @@ package final class Monitor {
         if count > old {
             workspaces.append(contentsOf: Array(repeating: [], count: count - old))
             layouts.append(contentsOf: Array(repeating: .tile, count: count - old))
-            focusedPaneIndices.append(contentsOf: Array(repeating: 0, count: count - old))
+            focusedPaneIDs.append(contentsOf: Array(repeating: nil, count: count - old))
+            lastStackPaneIDs.append(contentsOf: Array(repeating: nil, count: count - old))
         } else {
             let overflow = workspaces[count..<old].flatMap { $0 }
             workspaces.removeSubrange(count...)
             layouts.removeSubrange(count...)
-            focusedPaneIndices.removeSubrange(count...)
+            focusedPaneIDs.removeSubrange(count...)
+            lastStackPaneIDs.removeSubrange(count...)
             if active >= count {
                 active = count - 1
             }
@@ -228,19 +268,19 @@ package final class Monitor {
                 previousActive = active
             }
             workspaces[active].append(contentsOf: overflow)
+            normalizeWorkspace(active)
         }
     }
 
     func saveFocusedIndex() {
-        guard let location = activeLocation() else { return }
-        focusedPaneIndices[active] = location.paneIndex
-        workspaces[active][location.paneIndex].activeIndex = location.windowIndex
+        normalizeWorkspace(active)
     }
 
     func copyState(from source: Monitor) {
         workspaces = source.workspaces
         layouts = source.layouts
-        focusedPaneIndices = source.focusedPaneIndices
+        focusedPaneIDs = source.focusedPaneIDs
+        lastStackPaneIDs = source.lastStackPaneIDs
         active = source.active
         previousActive = source.previousActive
     }
@@ -249,7 +289,8 @@ package final class Monitor {
         let count = Config.shared.workspaceCount
         workspaces = Array(repeating: [], count: count)
         layouts = Array(repeating: .tile, count: count)
-        focusedPaneIndices = Array(repeating: 0, count: count)
+        focusedPaneIDs = Array(repeating: nil, count: count)
+        lastStackPaneIDs = Array(repeating: nil, count: count)
         active = 0
         previousActive = 0
     }
@@ -284,13 +325,13 @@ package final class Monitor {
     @discardableResult
     func activateWindow(_ window: TrackedWindow, workspaceIndex: Int) -> Bool {
         guard let location = location(of: window, workspaceIndex: workspaceIndex) else { return false }
-        focusedPaneIndices[workspaceIndex] = location.paneIndex
-        workspaces[workspaceIndex][location.paneIndex].activeIndex = location.windowIndex
+        focusedPaneIDs[workspaceIndex] = workspaces[workspaceIndex][location.paneIndex].id
+        workspaces[workspaceIndex][location.paneIndex].activeWindow = window
         return true
     }
 
     func tabStripState() -> TabStripState? {
-        guard let location = activeLocation() else { return nil }
+        guard let location = savedLocation() else { return nil }
         let pane = workspaces[active][location.paneIndex]
         guard pane.windows.count > 1 else { return nil }
 
@@ -299,26 +340,19 @@ package final class Monitor {
         guard frames.indices.contains(location.paneIndex) else { return nil }
 
         return TabStripState(
+            paneID: pane.id,
             frame: frames[location.paneIndex],
-            titles: pane.windows.map { $0.displayTitle() },
-            activeIndex: pane.activeIndex
+            tabs: pane.windows.map { TabState(window: $0, title: $0.displayTitle()) },
+            activeWindow: pane.activeWindow ?? pane.windows[location.windowIndex]
         )
-    }
-
-    private func activeLocation() -> PaneLocation? {
-        if let focused = WindowManager.focusedWindow(),
-           let location = location(of: focused, workspaceIndex: active) {
-            workspaces[active][location.paneIndex].activeIndex = location.windowIndex
-            focusedPaneIndices[active] = location.paneIndex
-            return location
-        }
-        return savedLocation()
     }
 
     private func savedLocation() -> PaneLocation? {
         guard !workspaces[active].isEmpty else { return nil }
-        clampFocusedPaneIndex(active)
-        let paneIndex = focusedPaneIndices[active]
+        normalizeWorkspace(active)
+        guard let focusedPaneID = focusedPaneIDs[active],
+              let paneIndex = PaneOperations.location(of: focusedPaneID, in: workspaces[active])
+        else { return nil }
         let pane = workspaces[active][paneIndex]
         guard !pane.windows.isEmpty else { return nil }
         return PaneLocation(paneIndex: paneIndex, windowIndex: pane.activeIndex)
@@ -331,8 +365,11 @@ package final class Monitor {
 
     private func focusActiveWindow(at location: PaneLocation) {
         guard workspaces[active].indices.contains(location.paneIndex),
-              let window = workspaces[active][location.paneIndex].activeWindow
+              workspaces[active][location.paneIndex].windows.indices.contains(location.windowIndex)
         else { return }
+        let window = workspaces[active][location.paneIndex].windows[location.windowIndex]
+        workspaces[active][location.paneIndex].activeWindow = window
+        WorkspaceManager.shared.noteInternalFocus(window)
         window.focus()
         if layouts[active] == .monocle {
             window.raise()
@@ -361,16 +398,35 @@ package final class Monitor {
                 workspaces[index].remove(at: paneIndex)
             }
         }
-        clampFocusedPaneIndex(index)
+        normalizeWorkspace(index)
     }
 
-    private func clampFocusedPaneIndex(_ index: Int) {
-        guard focusedPaneIndices.indices.contains(index) else { return }
-        if workspaces[index].isEmpty {
-            focusedPaneIndices[index] = 0
-        } else {
-            focusedPaneIndices[index] = min(max(focusedPaneIndices[index], 0), workspaces[index].count - 1)
-            workspaces[index][focusedPaneIndices[index]].normalizeActiveIndex()
+    private func normalizeWorkspace(_ index: Int, preferredPaneIndex: Int? = nil) {
+        guard focusedPaneIDs.indices.contains(index), workspaces.indices.contains(index) else { return }
+
+        for paneIndex in workspaces[index].indices {
+            workspaces[index][paneIndex].normalizeActiveWindow()
         }
+
+        if workspaces[index].isEmpty {
+            focusedPaneIDs[index] = nil
+            lastStackPaneIDs[index] = nil
+            return
+        }
+
+        if let lastStackPaneID = lastStackPaneIDs[index],
+           !workspaces[index].contains(where: { $0.id == lastStackPaneID }) {
+            lastStackPaneIDs[index] = nil
+        }
+
+        if let focusedPaneID = focusedPaneIDs[index],
+           workspaces[index].contains(where: { $0.id == focusedPaneID }) {
+            return
+        }
+
+        let targetIndex = preferredPaneIndex.map {
+            min(max($0, 0), workspaces[index].count - 1)
+        } ?? 0
+        focusedPaneIDs[index] = workspaces[index][targetIndex].id
     }
 }

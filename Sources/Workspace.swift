@@ -7,6 +7,7 @@ package final class WorkspaceManager {
     private(set) var monitors: [Monitor] = []
     private(set) var focusedMonitorIndex: Int = 0
     private var screenChangeWork: DispatchWorkItem?
+    private var focusEchoSuppressionUntil: Date?
 
     var focusedMonitor: Monitor { monitors[focusedMonitorIndex] }
 
@@ -21,6 +22,9 @@ package final class WorkspaceManager {
         }
         for monitor in monitors {
             monitor.retile()
+        }
+        if let app = NSWorkspace.shared.frontmostApplication, app.activationPolicy == .regular {
+            revealFocusedWindow(pid: app.processIdentifier)
         }
         StatusBar.shared.update()
     }
@@ -39,16 +43,18 @@ package final class WorkspaceManager {
     @discardableResult
     func revealFocusedWindow(pid: pid_t) -> Bool {
         guard let window = WindowManager.focusedWindow(pid: pid) else { return false }
-        return revealWindow(window)
+        if revealWindow(window) { return true }
+        return adoptFocusedWindow(window)
     }
 
     @discardableResult
     func revealWindow(_ window: TrackedWindow) -> Bool {
         guard !monitors.isEmpty else { return false }
+        guard !shouldSuppressFocusEcho(for: window) else { return true }
 
         for (monitorIndex, monitor) in monitors.enumerated() {
             for workspaceIndex in 0..<monitor.workspaces.count {
-                guard let location = monitor.location(of: window, workspaceIndex: workspaceIndex) else {
+                guard monitor.location(of: window, workspaceIndex: workspaceIndex) != nil else {
                     continue
                 }
 
@@ -57,13 +63,13 @@ package final class WorkspaceManager {
                 guard monitorChanged || workspaceChanged else {
                     monitor.activateWindow(window, workspaceIndex: workspaceIndex)
                     monitor.retile()
+                    StatusBar.shared.update()
                     return true
                 }
 
                 focusedMonitor.saveFocusedIndex()
                 focusedMonitorIndex = monitorIndex
-                monitor.focusedPaneIndices[workspaceIndex] = location.paneIndex
-                monitor.workspaces[workspaceIndex][location.paneIndex].activeIndex = location.windowIndex
+                monitor.activateWindow(window, workspaceIndex: workspaceIndex)
 
                 if workspaceChanged {
                     monitor.switchTo(workspaceIndex)
@@ -80,6 +86,18 @@ package final class WorkspaceManager {
             }
         }
         return false
+    }
+
+    @discardableResult
+    private func adoptFocusedWindow(_ window: TrackedWindow) -> Bool {
+        guard window.isTileable() else { return false }
+        let monitor = monitorForWindow(window)
+        monitor.addWindow(window)
+        if let monitorIndex = monitors.firstIndex(where: { $0 === monitor }) {
+            focusedMonitorIndex = monitorIndex
+        }
+        StatusBar.shared.update()
+        return true
     }
 
     func moveActiveWindowTo(_ index: Int) {
@@ -122,6 +140,16 @@ package final class WorkspaceManager {
         StatusBar.shared.update()
     }
 
+    func focusLeft() {
+        focusedMonitor.focusLeft()
+        StatusBar.shared.update()
+    }
+
+    func focusRight() {
+        focusedMonitor.focusRight()
+        StatusBar.shared.update()
+    }
+
     func moveFocused(offset: Int) {
         focusedMonitor.moveFocused(offset: offset)
         StatusBar.shared.update()
@@ -137,8 +165,8 @@ package final class WorkspaceManager {
         StatusBar.shared.update()
     }
 
-    func activateTab(index: Int) {
-        focusedMonitor.activateTab(index: index)
+    func activateTab(paneID: PaneID, window: TrackedWindow) {
+        focusedMonitor.activateTab(paneID: paneID, window: window)
         StatusBar.shared.update()
     }
 
@@ -176,20 +204,23 @@ package final class WorkspaceManager {
 
     func moveWindowToMonitor(offset: Int) {
         guard monitors.count > 1 else { return }
-        guard let focused = WindowManager.focusedWindow() else { return }
 
         let source = focusedMonitor
         guard let pane = source.removeFocusedPane() else { return }
+        let focused = pane.activeWindow
         source.retile()
 
         let targetIndex = (focusedMonitorIndex + offset + monitors.count) % monitors.count
         let target = monitors[targetIndex]
         target.workspaces[target.active].insert(pane, at: 0)
-        target.focusedPaneIndices[target.active] = 0
+        target.focusedPaneIDs[target.active] = pane.id
         target.retile()
 
         focusedMonitorIndex = targetIndex
-        focused.focus()
+        if let focused {
+            noteInternalFocus(focused)
+            focused.focus()
+        }
         StatusBar.shared.update()
     }
 
@@ -267,6 +298,19 @@ package final class WorkspaceManager {
     func tabStripState() -> TabStripState? {
         guard !monitors.isEmpty else { return nil }
         return focusedMonitor.tabStripState()
+    }
+
+    func noteInternalFocus(_ window: TrackedWindow) {
+        focusEchoSuppressionUntil = Date().addingTimeInterval(0.5)
+    }
+
+    private func shouldSuppressFocusEcho(for window: TrackedWindow) -> Bool {
+        guard let focusEchoSuppressionUntil else { return false }
+        if Date() <= focusEchoSuppressionUntil {
+            return true
+        }
+        self.focusEchoSuppressionUntil = nil
+        return false
     }
 
     private func rebuildMonitors() {

@@ -128,6 +128,8 @@ package enum Key {
 }
 
 package struct BuiltinBindings {
+    var focusLeft: [KeyCombo] = []
+    var focusRight: [KeyCombo] = []
     var focusNext = [KeyCombo(key: Key.j)]
     var focusPrev = [KeyCombo(key: Key.k)]
     var moveNext: [KeyCombo] = []
@@ -153,6 +155,7 @@ package struct Config {
 
     package var workspaceCount: Int = 9
     package var masterRatio: CGFloat = 0.55
+    package var windowGap: CGFloat = 6
     package var modifier: CGEventFlags = .maskAlternate
     package var customBindings: [Binding] = [
         Binding(key: Key.return, shift: true, command: "open -n -a Terminal"),
@@ -197,6 +200,10 @@ package struct Config {
             config.masterRatio = CGFloat(ratio)
         }
 
+        if let gap = toml["window_gap"] as? Double {
+            config.windowGap = min(max(CGFloat(gap), 0), 64)
+        }
+
         if let mod = toml["modifier"] as? String {
             switch mod {
             case "option": config.modifier = .maskAlternate
@@ -207,6 +214,8 @@ package struct Config {
         }
 
         if let bindings = toml["bindings"] as? [String: Any] {
+            applyBinding(bindings, "focus_left", to: &config.bindings.focusLeft)
+            applyBinding(bindings, "focus_right", to: &config.bindings.focusRight)
             applyBinding(bindings, "focus_next", to: &config.bindings.focusNext)
             applyBinding(bindings, "focus_prev", to: &config.bindings.focusPrev)
             applyBinding(bindings, "move_next", to: &config.bindings.moveNext)
