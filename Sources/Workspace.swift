@@ -8,6 +8,7 @@ package final class WorkspaceManager {
     private(set) var focusedMonitorIndex: Int = 0
     private var screenChangeWork: DispatchWorkItem?
     private var focusEchoSuppressionUntil: Date?
+    private var expectedFocusEcho: TrackedWindow?
 
     var focusedMonitor: Monitor { monitors[focusedMonitorIndex] }
 
@@ -301,16 +302,53 @@ package final class WorkspaceManager {
     }
 
     func noteInternalFocus(_ window: TrackedWindow) {
+        expectedFocusEcho = window
         focusEchoSuppressionUntil = Date().addingTimeInterval(0.5)
     }
 
     private func shouldSuppressFocusEcho(for window: TrackedWindow) -> Bool {
-        guard let focusEchoSuppressionUntil else { return false }
-        if Date() <= focusEchoSuppressionUntil {
+        guard let focusEchoSuppressionUntil else {
+            expectedFocusEcho = nil
+            return false
+        }
+        guard Date() <= focusEchoSuppressionUntil else {
+            self.focusEchoSuppressionUntil = nil
+            expectedFocusEcho = nil
+            return false
+        }
+
+        if expectedFocusEcho == window {
             return true
         }
-        self.focusEchoSuppressionUntil = nil
+
+        if let state = modelState(for: window), !state.isActiveTab {
+            return true
+        }
+
         return false
+    }
+
+    private func modelState(for window: TrackedWindow) -> (isActiveTab: Bool, isFocusedWindow: Bool)? {
+        for (monitorIndex, monitor) in monitors.enumerated() {
+            for workspaceIndex in 0..<monitor.workspaces.count {
+                guard let location = monitor.location(of: window, workspaceIndex: workspaceIndex) else {
+                    continue
+                }
+
+                let activeTab = monitor.activeWindow(
+                    workspaceIndex: workspaceIndex,
+                    paneIndex: location.paneIndex
+                ) == window
+                let focusedWindow = monitorIndex == focusedMonitorIndex
+                    && monitor.active == workspaceIndex
+                    && monitor.focusedPaneIDs[workspaceIndex] == monitor.workspaces[workspaceIndex][location.paneIndex].id
+                    && activeTab
+
+                return (activeTab, focusedWindow)
+            }
+        }
+
+        return nil
     }
 
     private func rebuildMonitors() {

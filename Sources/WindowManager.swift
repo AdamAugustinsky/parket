@@ -16,10 +16,15 @@ struct TrackedWindow: Equatable {
               AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success
         else { return nil }
 
+        guard CFGetTypeID(posValue) == AXValueGetTypeID(),
+              CFGetTypeID(sizeValue) == AXValueGetTypeID()
+        else { return nil }
+
         var pos = CGPoint.zero
         var size = CGSize.zero
-        AXValueGetValue(posValue as! AXValue, .cgPoint, &pos)
-        AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+        guard AXValueGetValue(posValue as! AXValue, .cgPoint, &pos),
+              AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+        else { return nil }
         return CGRect(origin: pos, size: size)
     }
 
@@ -57,22 +62,12 @@ struct TrackedWindow: Equatable {
     }
 
     func isTileable() -> Bool {
-        let attrs = [
-            kAXRoleAttribute,
-            kAXSubroleAttribute,
-            kAXMinimizedAttribute,
-            "AXFullScreen"
-        ] as CFArray
-
-        var values: CFArray?
-        guard AXUIElementCopyMultipleAttributeValues(element, attrs, .stopOnError, &values) == .success,
-              let results = values as? [AnyObject], results.count == 4
+        guard let role = stringAttribute(kAXRoleAttribute as CFString),
+              let subrole = stringAttribute(kAXSubroleAttribute as CFString)
         else { return false }
 
-        let role = results[0] as? String
-        let subrole = results[1] as? String
-        let minimized = results[2] as? Bool ?? false
-        let fullscreen = results[3] as? Bool ?? false
+        let minimized = boolAttribute(kAXMinimizedAttribute as CFString)
+        let fullscreen = boolAttribute("AXFullScreen" as CFString)
 
         return role == kAXWindowRole
             && subrole == kAXStandardWindowSubrole
@@ -86,6 +81,22 @@ struct TrackedWindow: Equatable {
             return nil
         }
         return value as? String
+    }
+
+    private func stringAttribute(_ attribute: CFString) -> String? {
+        var value: AnyObject?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
+            return nil
+        }
+        return value as? String
+    }
+
+    private func boolAttribute(_ attribute: CFString) -> Bool {
+        var value: AnyObject?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
+            return false
+        }
+        return value as? Bool ?? false
     }
 
     func displayTitle() -> String {
@@ -130,6 +141,7 @@ enum WindowManager {
         guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &value) == .success else {
             return nil
         }
+        guard CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         let win = value as! AXUIElement
         guard isStandardWindow(win) else { return nil }
         return TrackedWindow(element: win, pid: pid)

@@ -93,8 +93,12 @@ package struct Pane<Item: Equatable>: Equatable {
     @discardableResult
     package mutating func remove(at index: Int) -> Item {
         let oldActiveIndex = activeIndex
+        let removedWasActive = windows.indices.contains(index) && windows[index] == activeWindow
         let window = windows.remove(at: index)
-        let preferredIndex = index <= oldActiveIndex ? oldActiveIndex - 1 : oldActiveIndex
+        if removedWasActive {
+            activeWindow = nil
+        }
+        let preferredIndex = removedWasActive ? index : oldActiveIndex
         normalizeActiveWindow(preferredIndex: preferredIndex)
         return window
     }

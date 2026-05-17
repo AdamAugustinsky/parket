@@ -170,6 +170,21 @@ enum PaneTests {
             check(pane.activeWindow == nil, "empty removal clears active window")
         }
 
+        do {
+            var pane = pane(1, [1, 2, 3], activeIndex: 1)
+            let removed = pane.remove(at: 1)
+            check(removed == 2, "remove at returns removed active tab")
+            check(pane.windows == [1, 3], "remove at deletes active tab")
+            check(pane.activeWindow == 3, "remove at promotes next tab after active removal")
+        }
+
+        do {
+            var pane = pane(1, [1, 2, 3], activeIndex: 2)
+            pane.remove(at: 0)
+            check(pane.windows == [2, 3], "remove at deletes earlier inactive tab")
+            check(pane.activeWindow == 3, "remove at preserves active identity after earlier removal")
+        }
+
         return (passed, failed)
     }
 }

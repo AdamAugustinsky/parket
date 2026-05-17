@@ -8,6 +8,8 @@ package final class WindowObserver {
     private static let retryInterval: TimeInterval = 0.05
 
     private var observers: [pid_t: AXObserver] = [:]
+    private var revealRetryTokens: [pid_t: UInt64] = [:]
+    private var nextRevealRetryToken: UInt64 = 0
 
     private init() {}
 
@@ -46,7 +48,9 @@ package final class WindowObserver {
 
         for app in NSWorkspace.shared.runningApplications {
             guard app.activationPolicy == .regular else { continue }
-            observeApp(pid: app.processIdentifier)
+            let pid = app.processIdentifier
+            observeApp(pid: pid)
+            observeExistingWindows(pid: pid)
         }
     }
 
@@ -63,10 +67,32 @@ package final class WindowObserver {
     }
 
     private func tryRevealFocusedWindow(pid: pid_t, attempt: Int) {
-        if WorkspaceManager.shared.revealFocusedWindow(pid: pid) { return }
-        guard attempt < Self.maxRetries else { return }
+        let token: UInt64
+        if attempt == 0 {
+            nextRevealRetryToken &+= 1
+            token = nextRevealRetryToken
+            revealRetryTokens[pid] = token
+        } else {
+            guard let existing = revealRetryTokens[pid] else { return }
+            token = existing
+        }
+
+        tryRevealFocusedWindow(pid: pid, attempt: attempt, token: token)
+    }
+
+    private func tryRevealFocusedWindow(pid: pid_t, attempt: Int, token: UInt64) {
+        guard revealRetryTokens[pid] == token else { return }
+
+        if WorkspaceManager.shared.revealFocusedWindow(pid: pid) {
+            revealRetryTokens.removeValue(forKey: pid)
+            return
+        }
+        guard attempt < Self.maxRetries else {
+            revealRetryTokens.removeValue(forKey: pid)
+            return
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.retryInterval) {
-            self.tryRevealFocusedWindow(pid: pid, attempt: attempt + 1)
+            self.tryRevealFocusedWindow(pid: pid, attempt: attempt + 1, token: token)
         }
     }
 
@@ -114,6 +140,19 @@ package final class WindowObserver {
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
 
         observers[pid] = obs
+    }
+
+    private func observeExistingWindows(pid: pid_t) {
+        let appRef = AXUIElementCreateApplication(pid)
+
+        var windowsValue: AnyObject?
+        guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsValue) == .success,
+              let windows = windowsValue as? [AXUIElement]
+        else { return }
+
+        for win in windows {
+            observeWindowDestruction(element: win, pid: pid)
+        }
     }
 
     private static let axCallback: AXObserverCallback = { _, element, notification, _ in

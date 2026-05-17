@@ -19,6 +19,7 @@ package final class TabStripController: NSObject {
     private var container: NSView?
     private var segmentedControl: NSSegmentedControl?
     private var lastState: TabStripState?
+    private var lastContentKey: TabStripContentKey?
 
     private override init() {}
 
@@ -27,15 +28,18 @@ package final class TabStripController: NSObject {
             guard let state, state.tabs.count > 1 else {
                 self.panel?.orderOut(nil)
                 self.lastState = nil
+                self.lastContentKey = nil
                 return
             }
 
             let panel = self.ensurePanel()
             self.position(panel: panel, for: state)
-            if self.lastState != state {
+            let contentKey = TabStripContentKey(state)
+            if self.lastContentKey != contentKey {
                 self.rebuildTabs(state)
-                self.lastState = state
+                self.lastContentKey = contentKey
             }
+            self.lastState = state
             panel.orderFrontRegardless()
         }
     }
@@ -150,5 +154,19 @@ package final class TabStripController: NSObject {
               state.tabs.indices.contains(index)
         else { return }
         WorkspaceManager.shared.activateTab(paneID: state.paneID, window: state.tabs[index].window)
+    }
+}
+
+private struct TabStripContentKey: Equatable {
+    let paneID: PaneID
+    let windows: [TrackedWindow]
+    let titles: [String]
+    let activeWindow: TrackedWindow
+
+    init(_ state: TabStripState) {
+        paneID = state.paneID
+        windows = state.tabs.map(\.window)
+        titles = state.tabs.map(\.title)
+        activeWindow = state.activeWindow
     }
 }

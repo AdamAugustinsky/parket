@@ -34,7 +34,7 @@ package final class Hotkeys {
             if let tap = Hotkeys.shared.tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
-            return Unmanaged.passRetained(event)
+            return Unmanaged.passUnretained(event)
         }
 
         let flags = event.flags
@@ -45,7 +45,7 @@ package final class Hotkeys {
         let hasShift = flags.contains(.maskShift)
 
         guard hasModifier else {
-            return Unmanaged.passRetained(event)
+            return Unmanaged.passUnretained(event)
         }
 
         for binding in config.customBindings {
@@ -62,7 +62,7 @@ package final class Hotkeys {
 
         if let number = config.numberKeys[keyCode] {
             guard isWorkspaceCombo(flags: flags, shift: hasShift, globalModifier: config.modifier) else {
-                return Unmanaged.passRetained(event)
+                return Unmanaged.passUnretained(event)
             }
             let index = number - 1
             DispatchQueue.main.async {
@@ -158,7 +158,7 @@ package final class Hotkeys {
             return nil
         }
 
-        return Unmanaged.passRetained(event)
+        return Unmanaged.passUnretained(event)
     }
 
     private static func matches(

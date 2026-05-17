@@ -115,7 +115,7 @@ package final class Monitor {
         if location.paneIndex != 0 {
             lastStackPaneIDs[active] = workspaces[active][location.paneIndex].id
         }
-        retile()
+        retile(cleanup: false)
         focusActiveWindow(at: location)
     }
 
@@ -143,7 +143,7 @@ package final class Monitor {
             lastStackPaneIDs[active] = workspaces[active][target.paneIndex].id
         }
         focusedPaneIDs[active] = workspaces[active][target.paneIndex].id
-        retile()
+        retile(cleanup: false)
         focusActiveWindow(at: target)
     }
 
@@ -156,7 +156,7 @@ package final class Monitor {
         ) else { return }
 
         focusedPaneIDs[active] = workspaces[active][target.paneIndex].id
-        retile()
+        retile(cleanup: false)
         focusActiveWindow(at: target)
     }
 
@@ -169,7 +169,7 @@ package final class Monitor {
         ) else { return }
 
         focusedPaneIDs[active] = workspaces[active][target.paneIndex].id
-        retile()
+        retile(cleanup: false)
         focusActiveWindow(at: target)
     }
 
@@ -182,7 +182,7 @@ package final class Monitor {
         ) else { return }
 
         focusedPaneIDs[active] = workspaces[active][target.paneIndex].id
-        retile()
+        retile(cleanup: false)
         focusActiveWindow(at: target)
     }
 
@@ -191,13 +191,13 @@ package final class Monitor {
         workspaces[active].swapAt(0, location.paneIndex)
         let target = PaneLocation(paneIndex: 0, windowIndex: location.windowIndex)
         focusedPaneIDs[active] = workspaces[active][0].id
-        retile()
+        retile(cleanup: false)
         focusActiveWindow(at: target)
     }
 
     func toggleLayout() {
         layouts[active] = layouts[active] == .tile ? .monocle : .tile
-        retile()
+        retile(cleanup: false)
         if layouts[active] == .monocle {
             activeWindow()?.raise()
         }
@@ -211,7 +211,7 @@ package final class Monitor {
         focusedPaneIDs[active] = paneID
         workspaces[active][paneIndex].activeWindow = window
         let location = PaneLocation(paneIndex: paneIndex, windowIndex: windowIndex)
-        retile()
+        retile(cleanup: false)
         focusActiveWindow(at: location)
     }
 
@@ -226,8 +226,12 @@ package final class Monitor {
     }
 
     @discardableResult
-    func retile() -> CGRect {
-        cleanupWorkspace(active)
+    func retile(cleanup: Bool = true) -> CGRect {
+        if cleanup {
+            cleanupWorkspace(active)
+        } else {
+            normalizeWorkspace(active)
+        }
         let screen = WindowManager.screenFrame(for: self.screen)
         let offscreen = WindowManager.screenRect(for: self.screen)
         let frames = Tiler.calculateFrames(count: workspaces[active].count, screen: screen, layout: layouts[active])
@@ -320,6 +324,13 @@ package final class Monitor {
     func location(of window: TrackedWindow, workspaceIndex: Int) -> PaneLocation? {
         guard workspaces.indices.contains(workspaceIndex) else { return nil }
         return PaneOperations.location(of: window, in: workspaces[workspaceIndex])
+    }
+
+    func activeWindow(workspaceIndex: Int, paneIndex: Int) -> TrackedWindow? {
+        guard workspaces.indices.contains(workspaceIndex),
+              workspaces[workspaceIndex].indices.contains(paneIndex)
+        else { return nil }
+        return workspaces[workspaceIndex][paneIndex].activeWindow
     }
 
     @discardableResult
