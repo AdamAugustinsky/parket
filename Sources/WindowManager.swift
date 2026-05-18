@@ -6,7 +6,7 @@ struct TrackedWindow: Equatable {
     let pid: pid_t
 
     static func == (lhs: TrackedWindow, rhs: TrackedWindow) -> Bool {
-        CFEqual(lhs.element, rhs.element)
+        lhs.isSameWindow(as: rhs)
     }
 
     func getFrame() -> CGRect? {
@@ -97,6 +97,58 @@ struct TrackedWindow: Equatable {
             return false
         }
         return value as? Bool ?? false
+    }
+
+    private func isSameWindow(as other: TrackedWindow) -> Bool {
+        guard pid == other.pid else { return false }
+        if CFEqual(element, other.element) { return true }
+
+        if let windowNumber = cgWindowNumber(),
+           let otherWindowNumber = other.cgWindowNumber() {
+            return windowNumber == otherWindowNumber
+        }
+
+        guard let frame = getFrame(),
+              let otherFrame = other.getFrame(),
+              frame.isApproximatelyEqual(to: otherFrame)
+        else { return false }
+
+        let identifier = stringAttribute("AXIdentifier" as CFString)
+        let otherIdentifier = other.stringAttribute("AXIdentifier" as CFString)
+        if identifier != nil || otherIdentifier != nil {
+            return identifier == otherIdentifier
+        }
+
+        return title() == other.title()
+    }
+
+    private func cgWindowNumber() -> Int? {
+        guard let frame = getFrame(),
+              let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        else { return nil }
+
+        let expectedTitle = title()
+
+        for info in windows {
+            guard let ownerPID = info[kCGWindowOwnerPID as String] as? Int,
+                  pid_t(ownerPID) == pid,
+                  (info[kCGWindowLayer as String] as? Int ?? 0) == 0,
+                  let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: bounds),
+                  rect.isApproximatelyEqual(to: frame)
+            else { continue }
+
+            if let expectedTitle,
+               let windowTitle = info[kCGWindowName as String] as? String,
+               !windowTitle.isEmpty,
+               windowTitle != expectedTitle {
+                continue
+            }
+
+            return info[kCGWindowNumber as String] as? Int
+        }
+
+        return nil
     }
 
     func displayTitle() -> String {
@@ -197,5 +249,14 @@ enum WindowManager {
 
     static func displayID(for screen: NSScreen) -> CGDirectDisplayID {
         screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0
+    }
+}
+
+private extension CGRect {
+    func isApproximatelyEqual(to other: CGRect, tolerance: CGFloat = 2) -> Bool {
+        abs(origin.x - other.origin.x) <= tolerance
+            && abs(origin.y - other.origin.y) <= tolerance
+            && abs(size.width - other.size.width) <= tolerance
+            && abs(size.height - other.size.height) <= tolerance
     }
 }

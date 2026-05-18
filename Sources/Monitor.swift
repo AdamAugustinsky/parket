@@ -403,6 +403,7 @@ package final class Monitor {
 
     private func cleanupWorkspace(_ index: Int) {
         guard workspaces.indices.contains(index) else { return }
+        removeDuplicateWindows(in: index)
         for paneIndex in workspaces[index].indices.reversed() {
             workspaces[index][paneIndex].removeAll { !$0.isTileable() }
             if workspaces[index][paneIndex].isEmpty {
@@ -410,6 +411,27 @@ package final class Monitor {
             }
         }
         normalizeWorkspace(index)
+    }
+
+    private func removeDuplicateWindows(in index: Int) {
+        var seen: [TrackedWindow] = []
+        var deduped: [WindowPane] = []
+
+        for var pane in workspaces[index] {
+            pane.windows = pane.windows.filter { window in
+                if seen.contains(window) {
+                    return false
+                }
+                seen.append(window)
+                return true
+            }
+
+            guard !pane.isEmpty else { continue }
+            pane.normalizeActiveWindow()
+            deduped.append(pane)
+        }
+
+        workspaces[index] = deduped
     }
 
     private func normalizeWorkspace(_ index: Int, preferredPaneIndex: Int? = nil) {
